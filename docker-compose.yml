@@ -6,19 +6,33 @@ services:
   postgres:
     image: postgis/postgis
     container_name: postgres
-    restart: on-failure
+    restart: always
     healthcheck:
       test: /usr/bin/pg_isready -U postgres
       interval: 5s
       timeout: 10s
       retries: 120
     ports:
-      - 5432
+      - "5432:5432"
     env_file:
       - ./postgres/postgres.env
     volumes:
       - pg_data:${PGDATA:-/var/lib/postgresql/data}:rw
       - ./postgres/01-init-user.sh:/docker-entrypoint-initdb.d/01-init-user.sh
+    networks:
+      - geoserver-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4_container
+    restart: always
+    ports:
+      - "82:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@51.kaf
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
     networks:
       - geoserver-network
 
@@ -32,6 +46,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      - GEOSERVER_LOG_DIR=${GEOSERVER_LOG_DIR:-/var/geoserver/logs}
+      - GEOSERVER_DATA_DIR=${GEOSERVER_DATA_DIR:-/var/geoserver/datadir}
+      - GEOWEBCACHE_CONFIG_DIR=${GEOWEBCACHE_CONFIG_DIR:-/var/geoserver/datadir/gwc}
+      - GEOWEBCACHE_CACHE_DIR=${GEOWEBCACHE_CACHE_DIR:-/var/geoserver/gwc_cache_dir}
+      - NETCDF_DATA_DIR=${NETCDF_DATA_DIR:-/var/geoserver/netcdf_data_dir}
+      - GRIB_CACHE_DIR=${GRIB_CACHE_DIR:-/var/geoserver/grib_cache_dir}
+    volumes:
+      - logs:${GEOSERVER_LOG_DIR}
+      - datadir:${GEOSERVER_DATA_DIR}
+      - gwc_config:${GEOWEBCACHE_CONFIG_DIR}
+      - gwc:${GEOWEBCACHE_CACHE_DIR}
+      - netcfd:${NETCDF_DATA_DIR}
+      - grib_cache:${GRIB_CACHE_DIR}
     ports:
       - 8080
     networks:
@@ -51,3 +79,10 @@ services:
 
 volumes:
   pg_data:
+  logs:
+  datadir:
+  gwc_config:
+  gwc:
+  netcfd:
+  grib_cache:
+  pgadmin-data:
