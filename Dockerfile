@@ -1,23 +1,22 @@
-FROM tomcat:9-jdk11-openjdk as mother
+FROM tomcat:9-jdk11-temurin-jammy as mother
 LABEL maintainer="Alessandro Parma <alessandro.parma@geosolutionsgroup.com>"
 SHELL ["/bin/bash", "-c"]
 
-# download and install libjpeg-2.0.6 from sources.
-ARG DEBIAN_FRONTEND=noninteractive
-ARG CMAKE_BUILD_PARALLEL_LEVEL=8
+ARG CORS_ENABLED=false
+ARG CORS_ALLOWED_ORIGINS=*
+ARG CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,HEAD,OPTIONS
+ARG CORS_ALLOWED_HEADERS=*
+ARG CORS_ALLOW_CREDENTIALS=false
+
+ENV CORS_ENABLED=$CORS_ENABLED
+ENV CORS_ALLOWED_ORIGINS=$CORS_ALLOWED_ORIGINS
+ENV CORS_ALLOWED_METHODS=$CORS_ALLOWED_METHODS
+ENV CORS_ALLOWED_HEADERS=$CORS_ALLOWED_HEADERS
+ENV CORS_ALLOW_CREDENTIALS=$CORS_ALLOW_CREDENTIALS
+
 ARG APP_LOCATION="geoserver"
-RUN apt-get update && apt-get install -y unzip wget cmake nasm\
-    && wget https://sourceforge.net/projects/libjpeg-turbo/files/2.0.6/libjpeg-turbo-2.0.6.tar.gz \
-    && tar -zxf ./libjpeg-turbo-2.0.6.tar.gz \
-    && cd libjpeg-turbo-2.0.6 && cmake -G"Unix Makefiles" && make deb \
-    && dpkg -i ./libjpeg*.deb && apt-get -f install \
-    && apt-get -y purge cmake nasm\
-    && apt-get clean \
-    && apt-get -y autoclean \
-    && apt-get -y autoremove \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /usr/share/man/* \
-    && rm -rf /usr/share/doc/*
+
+RUN apt-get update && apt-get install -y unzip
 
 # accepts local files and URLs. Tar(s) are automatically extracted
 WORKDIR /output/datadir
@@ -60,7 +59,7 @@ RUN \
       mv /output/webapp/geoserver /output/webapp/${APP_LOCATION}; \
     fi
 
-FROM tomcat:9-jdk11-openjdk
+FROM tomcat:9-jdk11-temurin-jammy
 
 ARG UID=1000
 ARG GID=1000
@@ -79,12 +78,12 @@ ENV GEOWEBCACHE_CONFIG_DIR="${GEOSERVER_DATA_DIR}/gwc"
 ENV GEOWEBCACHE_CACHE_DIR="${GEOSERVER_HOME}/gwc_cache_dir"
 ENV NETCDF_DATA_DIR="${GEOSERVER_HOME}/netcdf_data_dir"
 ENV GRIB_CACHE_DIR="${GEOSERVER_HOME}/grib_cache_dir"
-# override at run time as needed JAVA_OPTS
+# override at run time as needed CATALINA_OPTS
 ENV INITIAL_MEMORY="2G"
 ENV MAXIMUM_MEMORY="4G"
-ENV LD_LIBRARY_PATH="/opt/libjpeg-turbo/lib64"
 ENV JAIEXT_ENABLED="true"
 ENV PLUGIN_DYNAMIC_URLS=""
+ENV EXTRA_GEOSERVER_OPTS=""
 ENV GEOSERVER_OPTS=" \
   -Dorg.geotools.coverage.jaiext.enabled=${JAIEXT_ENABLED} \
   -Duser.timezone=UTC \
@@ -95,7 +94,7 @@ ENV GEOSERVER_OPTS=" \
   -DNETCDF_DATA_DIR=${NETCDF_DATA_DIR} \
   -DGRIB_CACHE_DIR=${GRIB_CACHE_DIR}"
 
-ENV JAVA_OPTS="-Xms${INITIAL_MEMORY} -Xmx${MAXIMUM_MEMORY} \
+ENV CATALINA_OPTS="-Xms${INITIAL_MEMORY} -Xmx${MAXIMUM_MEMORY} \
   -Djava.awt.headless=true -server \
   -Dfile.encoding=UTF8 \
   -Djavax.servlet.request.encoding=UTF-8 \
@@ -113,7 +112,7 @@ COPY run_tests.sh /docker/tests/run_tests.sh
 # install needed packages and create externalized dirs
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-    && apt-get install --yes git vim gdal-bin postgresql-client fontconfig libfreetype6 jq \
+    && apt-get install --yes git vim gdal-bin postgresql-client fontconfig libfreetype6 jq unzip \
     && apt-get clean \
     && apt-get -y autoclean \
     && apt-get -y autoremove \
@@ -129,7 +128,6 @@ RUN apt-get update \
     "${GRIB_CACHE_DIR}"
 
 # copy from mother
-COPY --from=mother "/opt/libjpeg-turbo" "/opt/libjpeg-turbo"
 COPY --from=mother "/output/datadir" "${GEOSERVER_DATA_DIR}"
 COPY --from=mother "/output/webapp/geoserver" "${CATALINA_BASE}/webapps/geoserver"
 COPY --from=mother "/output/plugins" "${CATALINA_BASE}/webapps/geoserver/WEB-INF/lib"
